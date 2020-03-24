@@ -11,6 +11,7 @@ enum Mode {
     Select,
     Move,
     Attack,
+    Build,
 }
 
 #[derive(Clone, Debug)]
@@ -47,23 +48,36 @@ impl State {
             ),
             (
                 GameCell::new(8, 9, 'Q', RGB::from_u8(170, 20, 0)),
-                Unit::new(Race::Bug, 1).with_hp(2).with_move_dist(1),
+                Unit::new(Race::Bug, 2).with_move_dist(1),
+            ),
+            (
+                GameCell::new(7, 10, 'J', RGB::from_u8(170, 20, 0)),
+                Unit::new(Race::Bug, 1)
+                    .with_num_moves(2)
+                    .with_attack_range(1),
+            ),
+            (
+                GameCell::new(6, 11, 'D', RGB::from_u8(170, 20, 0)),
+                Unit::new(Race::Bug, 3).with_damage(2).with_num_attacks(2),
             ),
         ];
         world.insert((), units.into_iter());
 
         let units = vec![
             (
-                GameCell::new(14, 13, '@', RGB::from_u8(175, 175, 175)),
+                GameCell::new(14, 13, 't', RGB::from_u8(175, 175, 175)),
                 Unit::new(Race::Human, 1).with_move_dist(1),
             ),
             (
                 GameCell::new(16, 13, 'W', RGB::from_u8(175, 175, 175)),
-                Unit::new(Race::Human, 1)
-                    .with_hp(2)
+                Unit::new(Race::Human, 2)
                     .with_move_dist(1)
                     .with_num_attacks(3)
                     .with_attack_range(1),
+            ),
+            (
+                GameCell::new(15, 12, 'T', RGB::from_u8(175, 175, 175)),
+                Unit::new(Race::Human, 3).with_damage(2),
             ),
         ];
         world.insert((), units.into_iter());
@@ -71,15 +85,28 @@ impl State {
         let units = vec![
             (
                 GameCell::new(20, 20, 'V', RGB::from_u8(0, 200, 0)),
-                Unit::new(Race::Bionic, 1)
-                    .with_hp(2)
+                Unit::new(Race::Bionic, 2)
                     .with_num_moves(2)
                     .with_num_attacks(2)
                     .with_attack_range(1),
             ),
             (
                 GameCell::new(15, 20, 'Y', RGB::from_u8(0, 200, 0)),
-                Unit::new(Race::Bionic, 1).with_hp(3).with_num_attacks(2),
+                Unit::new(Race::Bionic, 3).with_num_attacks(2),
+            ),
+            (
+                GameCell::new(13, 20, 'X', RGB::from_u8(0, 200, 0)),
+                Unit::new(Race::Bionic, 2)
+                    .with_num_moves(2)
+                    .with_num_attacks(2),
+            ),
+            (
+                GameCell::new(13, 21, 'A', RGB::from_u8(0, 200, 0)),
+                Unit::new(Race::Bionic, 4).with_num_attacks(4),
+            ),
+            (
+                GameCell::new(15, 22, 'H', RGB::from_u8(0, 200, 0)),
+                Unit::new_war_carrier(),
             ),
         ];
         world.insert((), units.into_iter());
@@ -116,6 +143,8 @@ impl State {
             }
             self.mouse_pressed = !self.mouse_pressed;
         }
+
+        self.print_grid(ctx);
 
         self.print_mode(ctx);
 
@@ -159,7 +188,12 @@ impl State {
             match self.mode {
                 Mode::Select => self.select_cells(),
                 Mode::Move => self.move_cells(),
-                Mode::Attack => self.attack_cells(),
+                Mode::Attack => self.attack_units(),
+                Mode::Build => {
+                    if self.selected {
+                        self.make_units();
+                    }
+                }
             }
         }
 
@@ -183,8 +217,27 @@ impl State {
                         self.mode = Mode::Attack
                     }
                 }
+                VirtualKeyCode::B => {
+                    if self.selected {
+                        self.mode = Mode::Build
+                    }
+                }
                 VirtualKeyCode::Escape => self.mode = Mode::Select,
                 _ => (),
+            }
+        }
+    }
+
+    fn print_grid(&mut self, ctx: &mut BTerm) {
+        for x in 0..self.window_size.0 {
+            for y in 3..self.window_size.1 - 1 {
+                ctx.print_color(
+                    x as i32,
+                    y as i32,
+                    RGB::from_u8(200, 200, 200),
+                    RGB::new(),
+                    ".",
+                )
             }
         }
     }
@@ -212,6 +265,16 @@ impl State {
                     "Attack",
                 )
             }
+            Mode::Build => {
+                ctx.draw_box(0, 0, 6, 2, RGB::from_u8(0, 0, 175), RGB::from_u8(0, 0, 175));
+                ctx.print_color(
+                    1,
+                    1,
+                    RGB::from_u8(255, 255, 255),
+                    RGB::from_u8(0, 0, 175),
+                    "Build",
+                )
+            }
         }
     }
 
@@ -222,25 +285,41 @@ impl State {
             if cell.selected() {
                 match self.mode {
                     Mode::Move => {
-                        for x in 1..=unit.num_moves() {
+                        for x in 1..=unit.num_moves().0 {
                             ctx.draw_hollow_box(
-                                cell.x() - unit.move_dist() * x,
-                                cell.y() - unit.move_dist() * x,
-                                unit.move_dist() * 2 * x,
-                                unit.move_dist() * 2 * x,
+                                cell.x() - unit.move_dist() * x - 1,
+                                cell.y() - unit.move_dist() * x - 1,
+                                unit.move_dist() * 2 * x + 2,
+                                unit.move_dist() * 2 * x + 2,
                                 RGB::from_u8(0, 255, 0),
                                 RGB::new(),
                             )
                         }
                     }
-                    Mode::Attack => ctx.draw_hollow_box(
-                        cell.x() - unit.attack_range(),
-                        cell.y() - unit.attack_range(),
-                        unit.attack_range() * 2,
-                        unit.attack_range() * 2,
-                        RGB::from_u8(255, 0, 0),
-                        RGB::new(),
-                    ),
+                    Mode::Attack => {
+                        if unit.num_attacks().0 > 0 {
+                            ctx.draw_hollow_box(
+                                cell.x() - unit.attack_range() - 1,
+                                cell.y() - unit.attack_range() - 1,
+                                unit.attack_range() * 2 + 2,
+                                unit.attack_range() * 2 + 2,
+                                RGB::from_u8(255, 0, 0),
+                                RGB::new(),
+                            )
+                        }
+                    }
+                    Mode::Build => {
+                        if unit.num_interceptors().0 > 0 {
+                            ctx.draw_hollow_box(
+                                cell.x() - 2,
+                                cell.y() - 2,
+                                4,
+                                4,
+                                RGB::from_u8(0, 0, 255),
+                                RGB::new(),
+                            )
+                        }
+                    }
                     _ => (),
                 }
             }
@@ -305,16 +384,17 @@ impl State {
             for (mut cell, mut unit) in query.iter(&mut self.world) {
                 if cell.selected() {
                     cell.move_pos(self.mouse.x, self.mouse.y);
-                    cell.deselect();
                     unit.use_move();
-                    self.mode = Mode::Select;
+                    if unit.num_moves().0 <= 0 {
+                        self.mode = Mode::Select;
+                    }
                     break;
                 }
             }
         }
     }
 
-    fn attack_cells(&mut self) {
+    fn attack_units(&mut self) {
         let read_query = <(Read<GameCell>, Read<Unit>)>::query();
         let query = <(Read<GameCell>, Write<Unit>)>::query();
 
@@ -351,6 +431,20 @@ impl State {
         }
     }
 
+    fn make_units(&mut self) {
+        let query = <(Read<GameCell>, Write<Unit>)>::query().filter(changed::<Unit>());
+
+        let mut units = Vec::new();
+        for (cell, mut unit) in query.iter(&mut self.world) {
+            if cell.selected() && self.turn == unit.race() {
+                if let Some(interceptor) = unit.make_interceptor(self.mouse.x, self.mouse.y) {
+                    units.push(interceptor);
+                }
+            }
+        }
+        self.world.insert((), units.into_iter());
+    }
+
     fn clear_cells(&mut self) {
         let query = <(Read<Unit>,)>::query().filter(changed::<Unit>());
 
@@ -370,7 +464,7 @@ impl State {
             Race::Bug => Race::Human,
             Race::Human => Race::Bionic,
             Race::Bionic => {
-                let query = <(Write<Unit>,)>::query().filter(changed::<Unit>());
+                let query = <(Write<Unit>,)>::query();
 
                 for (mut unit,) in query.iter(&mut self.world) {
                     unit.recharge();
