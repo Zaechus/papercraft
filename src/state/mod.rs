@@ -30,6 +30,12 @@ pub struct State {
     mode: Mode,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         let universe = Universe::new();
@@ -89,11 +95,8 @@ impl State {
         ctx.print_centered(37, "PaperCraft");
         ctx.print_centered(41, "Press the spacebar to start");
 
-        if let Some(key) = ctx.key {
-            match key {
-                VirtualKeyCode::Space => self.curr_state = CurrentState::Playing,
-                _ => (),
-            }
+        if let Some(VirtualKeyCode::Space) = ctx.key {
+            self.curr_state = CurrentState::Playing;
         }
     }
 
@@ -244,20 +247,21 @@ impl State {
 
         let mut can_move = false;
         for (cell, unit) in read_query.iter_immutable(&self.world) {
-            if unit.race() == self.turn && cell.selected() && unit.can_move() {
-                if Rect::with_exact(
+            if unit.race() == self.turn
+                && cell.selected()
+                && unit.can_move()
+                && Rect::with_exact(
                     cell.x() - unit.move_dist(),
                     cell.y() - unit.move_dist(),
                     cell.x() + unit.move_dist(),
                     cell.y() + unit.move_dist(),
                 )
                 .point_in_rect(Point::new(self.mouse.x, self.mouse.y))
-                {
-                    can_move = true;
-                    for (cell, _) in read_query.iter_immutable(&self.world) {
-                        if cell.x() == self.mouse.x && cell.y() == self.mouse.y {
-                            can_move = false;
-                        }
+            {
+                can_move = true;
+                for (cell, _) in read_query.iter_immutable(&self.world) {
+                    if cell.x() == self.mouse.x && cell.y() == self.mouse.y {
+                        can_move = false;
                     }
                 }
             }
@@ -282,22 +286,21 @@ impl State {
 
         let mut damage = 0;
         for (cell, unit) in read_query.iter_immutable(&self.world) {
-            if cell.selected() {
-                if Rect::with_exact(
+            if cell.selected()
+                && Rect::with_exact(
                     cell.x() - unit.attack_range(),
                     cell.y() - unit.attack_range(),
                     cell.x() + unit.attack_range(),
                     cell.y() + unit.attack_range(),
                 )
                 .point_in_rect(Point::new(self.mouse.x, self.mouse.y))
-                {
-                    for (cell2, unit2) in read_query.iter_immutable(&self.world) {
-                        if unit.race() != unit2.race()
-                            && cell2.x() == self.mouse.x
-                            && cell2.y() == self.mouse.y
-                        {
-                            damage = unit.damage();
-                        }
+            {
+                for (cell2, unit2) in read_query.iter_immutable(&self.world) {
+                    if unit.race() != unit2.race()
+                        && cell2.x() == self.mouse.x
+                        && cell2.y() == self.mouse.y
+                    {
+                        damage = unit.damage();
                     }
                 }
             }
