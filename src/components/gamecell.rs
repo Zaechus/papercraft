@@ -44,11 +44,14 @@ impl GameCell {
     pub fn color(&self) -> RGB {
         self.color
     }
+    pub fn color_bright(&self) -> RGB {
+        RGB::from_f32(self.color.r * 1.5, self.color.g * 1.5, self.color.b * 1.5)
+    }
     pub fn bg_color(&self) -> RGB {
         if self.selected {
             RGB::from_u8(255, 255, 255)
         } else {
-            RGB::from_u8(0, 0, 0)
+            RGB::new()
         }
     }
     pub fn selected(&self) -> bool {

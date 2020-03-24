@@ -22,6 +22,7 @@ pub enum CurrentState {
 pub struct State {
     curr_state: CurrentState,
     world: World,
+    window_size: (u32, u32),
     mouse: Point,
     mouse_pressed: bool,
     mouse_released: bool,
@@ -30,25 +31,19 @@ pub struct State {
     mode: Mode,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl State {
-    pub fn new() -> Self {
+    pub fn new(w: u32, h: u32) -> Self {
         let universe = Universe::new();
         let mut world = universe.create_world();
 
         let units = vec![
             (
                 GameCell::new(10, 10, '*', RGB::from_u8(170, 20, 0)),
-                Unit::new(Race::Bug, 1).with_attack_range(1),
+                Unit::new_spider(),
             ),
             (
                 GameCell::new(11, 10, '*', RGB::from_u8(170, 20, 0)),
-                Unit::new(Race::Bug, 1).with_attack_range(1),
+                Unit::new_spider(),
             ),
             (
                 GameCell::new(8, 9, 'Q', RGB::from_u8(170, 20, 0)),
@@ -57,15 +52,25 @@ impl State {
         ];
         world.insert((), units.into_iter());
 
-        let units = vec![(
-            GameCell::new(14, 13, '@', RGB::from_u8(175, 175, 175)),
-            Unit::new(Race::Human, 1).with_move_dist(1),
-        )];
+        let units = vec![
+            (
+                GameCell::new(14, 13, '@', RGB::from_u8(175, 175, 175)),
+                Unit::new(Race::Human, 1).with_move_dist(1),
+            ),
+            (
+                GameCell::new(16, 13, 'W', RGB::from_u8(175, 175, 175)),
+                Unit::new(Race::Human, 1)
+                    .with_hp(2)
+                    .with_move_dist(1)
+                    .with_num_attacks(3)
+                    .with_attack_range(1),
+            ),
+        ];
         world.insert((), units.into_iter());
 
         let units = vec![
             (
-                GameCell::new(20, 20, 'V', RGB::from_u8(0, 255, 0)),
+                GameCell::new(20, 20, 'V', RGB::from_u8(0, 200, 0)),
                 Unit::new(Race::Bionic, 1)
                     .with_hp(2)
                     .with_num_moves(2)
@@ -73,7 +78,7 @@ impl State {
                     .with_attack_range(1),
             ),
             (
-                GameCell::new(15, 20, 'Y', RGB::from_u8(0, 255, 0)),
+                GameCell::new(15, 20, 'Y', RGB::from_u8(0, 200, 0)),
                 Unit::new(Race::Bionic, 1).with_hp(3).with_num_attacks(2),
             ),
         ];
@@ -82,6 +87,7 @@ impl State {
         Self {
             curr_state: CurrentState::Menu,
             world,
+            window_size: (w, h),
             mouse: Point::new(0, 0),
             mouse_pressed: false,
             mouse_released: false,
@@ -92,8 +98,11 @@ impl State {
     }
 
     fn menu_state(&mut self, ctx: &mut BTerm) {
-        ctx.print_centered(37, "PaperCraft");
-        ctx.print_centered(41, "Press the spacebar to start");
+        ctx.print_centered(self.window_size.1 as i32 / 2 - 1, "PaperCraft");
+        ctx.print_centered(
+            self.window_size.1 as i32 / 2 + 1,
+            "Press the spacebar to start",
+        );
 
         if let Some(VirtualKeyCode::Space) = ctx.key {
             self.curr_state = CurrentState::Playing;
@@ -101,8 +110,6 @@ impl State {
     }
 
     fn play_state(&mut self, ctx: &mut BTerm) {
-        let read_query = <(Read<GameCell>, Read<Unit>)>::query();
-
         if ctx.left_click {
             if self.mouse_pressed {
                 self.mouse_released = true;
@@ -110,6 +117,79 @@ impl State {
             self.mouse_pressed = !self.mouse_pressed;
         }
 
+        self.print_mode(ctx);
+
+        ctx.print_centered(1, &format!("{:?}", self.turn));
+
+        let mut end_turn_box_rgb = RGB::from_u8(170, 0, 0);
+        if self.mouse.x >= self.window_size.0 as i32 - 10
+            && self.mouse.x <= self.window_size.0 as i32
+            && self.mouse.y >= 0
+            && self.mouse.y <= 2
+        {
+            end_turn_box_rgb = RGB::from_u8(200, 0, 0);
+            if self.mouse_released {
+                self.advance_turn();
+            }
+        }
+
+        ctx.draw_box(
+            self.window_size.0 as i32 - 10,
+            0,
+            9,
+            2,
+            end_turn_box_rgb,
+            end_turn_box_rgb,
+        );
+        ctx.print_color(
+            self.window_size.0 as i32 - 9,
+            1,
+            RGB::from_u8(255, 255, 255),
+            end_turn_box_rgb,
+            "End turn",
+        );
+
+        self.mouse = ctx.mouse_point();
+
+        ctx.print(self.mouse.x, self.mouse.y, "^");
+
+        self.print_cells(ctx);
+
+        if self.mouse_released {
+            match self.mode {
+                Mode::Select => self.select_cells(),
+                Mode::Move => self.move_cells(),
+                Mode::Attack => self.attack_cells(),
+            }
+        }
+
+        self.key_input(ctx);
+
+        self.clear_cells();
+
+        self.mouse_released = false;
+    }
+
+    fn key_input(&mut self, ctx: &mut BTerm) {
+        if let Some(key) = ctx.key {
+            match key {
+                VirtualKeyCode::M => {
+                    if self.selected {
+                        self.mode = Mode::Move
+                    }
+                }
+                VirtualKeyCode::A => {
+                    if self.selected {
+                        self.mode = Mode::Attack
+                    }
+                }
+                VirtualKeyCode::Escape => self.mode = Mode::Select,
+                _ => (),
+            }
+        }
+    }
+
+    fn print_mode(&mut self, ctx: &mut BTerm) {
         match self.mode {
             Mode::Select => (),
             Mode::Move => {
@@ -133,28 +213,10 @@ impl State {
                 )
             }
         }
+    }
 
-        ctx.print_centered(1, &format!("{:?}", self.turn));
-
-        ctx.draw_box(
-            150,
-            0,
-            9,
-            2,
-            RGB::from_u8(170, 10, 0),
-            RGB::from_u8(170, 10, 0),
-        );
-        ctx.print_color(
-            151,
-            1,
-            RGB::from_u8(255, 255, 255),
-            RGB::from_u8(170, 10, 0),
-            "End turn",
-        );
-
-        self.mouse = ctx.mouse_point();
-
-        ctx.print(self.mouse.x, self.mouse.y, "^");
+    fn print_cells(&mut self, ctx: &mut BTerm) {
+        let read_query = <(Read<GameCell>, Read<Unit>)>::query();
 
         for (cell, unit) in read_query.iter_immutable(&self.world) {
             if cell.selected() {
@@ -167,7 +229,7 @@ impl State {
                                 unit.move_dist() * 2 * x,
                                 unit.move_dist() * 2 * x,
                                 RGB::from_u8(0, 255, 0),
-                                RGB::from_u8(0, 0, 0),
+                                RGB::new(),
                             )
                         }
                     }
@@ -177,52 +239,24 @@ impl State {
                         unit.attack_range() * 2,
                         unit.attack_range() * 2,
                         RGB::from_u8(255, 0, 0),
-                        RGB::from_u8(0, 0, 0),
+                        RGB::new(),
                     ),
                     _ => (),
                 }
             }
+
             ctx.print_color(
                 cell.x(),
                 cell.y(),
-                cell.color(),
+                if self.mouse.x == cell.x() && self.mouse.y == cell.y() {
+                    cell.color_bright()
+                } else {
+                    cell.color()
+                },
                 cell.bg_color(),
                 &cell.symbol().to_string(),
             );
         }
-
-        if self.mouse_released {
-            if self.mouse.x >= 150 && self.mouse.x <= 160 && self.mouse.y >= 0 && self.mouse.y <= 2
-            {
-                self.advance_turn();
-            }
-            match self.mode {
-                Mode::Select => self.select_cells(),
-                Mode::Move => self.move_cells(),
-                Mode::Attack => self.attack_cells(),
-            }
-        }
-
-        if let Some(key) = ctx.key {
-            match key {
-                VirtualKeyCode::M => {
-                    if self.selected {
-                        self.mode = Mode::Move
-                    }
-                }
-                VirtualKeyCode::A => {
-                    if self.selected {
-                        self.mode = Mode::Attack
-                    }
-                }
-                VirtualKeyCode::Escape => self.mode = Mode::Select,
-                _ => (),
-            }
-        }
-
-        self.clear_cells();
-
-        self.mouse_released = false;
     }
 
     fn select_cells(&mut self) {

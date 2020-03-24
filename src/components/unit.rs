@@ -25,6 +25,18 @@ impl Unit {
         }
     }
 
+    pub fn new_spider() -> Self {
+        Self {
+            race: Race::Bug,
+            hp: 1,
+            num_moves: (1, 1),
+            move_dist: 3,
+            damage: 1,
+            num_attacks: (1, 1),
+            attack_range: 1,
+        }
+    }
+
     pub fn with_hp(mut self, x: i32) -> Self {
         self.hp = x;
         self
