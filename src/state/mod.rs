@@ -7,6 +7,8 @@ use crate::{
     types::Race,
 };
 
+const GREEN: (u8, u8, u8) = (0, 170, 0);
+
 enum Mode {
     Select,
     Move,
@@ -150,6 +152,14 @@ impl State {
 
         ctx.print_centered(1, &format!("{:?}", self.turn));
 
+        ctx.print_color(
+            self.mouse.x,
+            self.mouse.y,
+            RGB::named(GREEN),
+            RGB::new(),
+            "<",
+        );
+
         let mut end_turn_box_rgb = RGB::from_u8(170, 0, 0);
         if self.mouse.x >= self.window_size.0 as i32 - 10
             && self.mouse.x <= self.window_size.0 as i32
@@ -179,8 +189,6 @@ impl State {
         );
 
         self.mouse = ctx.mouse_point();
-
-        ctx.print(self.mouse.x, self.mouse.y, "^");
 
         self.print_cells(ctx);
 
