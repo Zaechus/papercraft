@@ -13,7 +13,7 @@ pub struct Unit {
     num_attacks: (i32, i32),
     attack_range: i32,
     num_interceptors: (i32, i32),
-    num_interceptor_moves: i32,
+    _num_interceptor_moves: i32,
     lifespan: Option<i32>,
 }
 
@@ -28,7 +28,7 @@ impl Unit {
             num_attacks: (1, 1),
             attack_range: 3,
             num_interceptors: (0, 0),
-            num_interceptor_moves: 0,
+            _num_interceptor_moves: 0,
             lifespan: None,
         }
     }
@@ -47,7 +47,7 @@ impl Unit {
             num_attacks: (0, 0),
             attack_range: 0,
             num_interceptors: (2, 2),
-            num_interceptor_moves: 2,
+            _num_interceptor_moves: 2,
             lifespan: None,
         }
     }

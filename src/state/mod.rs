@@ -1,6 +1,6 @@
 use bracket_lib::prelude::*;
 
-use legion::prelude::*;
+use legion::{maybe_changed, IntoQuery, Read, World, Write};
 
 use crate::{
     components::{GameCell, Unit},
@@ -36,8 +36,7 @@ pub struct State {
 
 impl State {
     pub fn new(w: u32, h: u32) -> Self {
-        let universe = Universe::new();
-        let mut world = universe.create_world();
+        let mut world = World::default();
 
         let units = vec![
             (
@@ -63,7 +62,7 @@ impl State {
                 Unit::new(Race::Bug, 3).with_damage(2).with_num_attacks(2),
             ),
         ];
-        world.insert((), units.into_iter());
+        world.extend(units.into_iter());
 
         let units = vec![
             (
@@ -82,7 +81,7 @@ impl State {
                 Unit::new(Race::Human, 3).with_damage(2),
             ),
         ];
-        world.insert((), units.into_iter());
+        world.extend(units.into_iter());
 
         let units = vec![
             (
@@ -111,7 +110,7 @@ impl State {
                 Unit::new_war_carrier(),
             ),
         ];
-        world.insert((), units.into_iter());
+        world.extend(units.into_iter());
 
         Self {
             curr_state: CurrentState::Menu,
@@ -287,9 +286,9 @@ impl State {
     }
 
     fn print_cells(&mut self, ctx: &mut BTerm) {
-        let read_query = <(Read<GameCell>, Read<Unit>)>::query();
+        let mut read_query = <(Read<GameCell>, Read<Unit>)>::query();
 
-        for (cell, unit) in read_query.iter_immutable(&self.world) {
+        for (cell, unit) in read_query.iter(&self.world) {
             if cell.selected() {
                 match self.mode {
                     Mode::Move => {
@@ -347,10 +346,10 @@ impl State {
     }
 
     fn select_cells(&mut self) {
-        let query = <(Write<GameCell>,)>::query();
+        let mut query = <(Write<GameCell>,)>::query();
 
         let mut selected = false;
-        for (mut cell,) in query.iter(&mut self.world) {
+        for (cell,) in query.iter_mut(&mut self.world) {
             if self.mouse.x == cell.x() && self.mouse.y == cell.y() {
                 cell.select();
                 selected = true;
@@ -363,11 +362,12 @@ impl State {
     }
 
     fn move_cells(&mut self) {
-        let read_query = <(Read<GameCell>, Read<Unit>)>::query();
-        let query = <(Write<GameCell>, Write<Unit>)>::query();
+        let mut read_query = <(Read<GameCell>, Read<Unit>)>::query();
+        let mut nested_read_query = <(Read<GameCell>, Read<Unit>)>::query();
+        let mut query = <(Write<GameCell>, Write<Unit>)>::query();
 
         let mut can_move = false;
-        for (cell, unit) in read_query.iter_immutable(&self.world) {
+        for (cell, unit) in read_query.iter(&self.world) {
             if unit.race() == self.turn
                 && cell.selected()
                 && unit.can_move()
@@ -380,7 +380,7 @@ impl State {
                 .point_in_rect(Point::new(self.mouse.x, self.mouse.y))
             {
                 can_move = true;
-                for (cell, _) in read_query.iter_immutable(&self.world) {
+                for (cell, _) in nested_read_query.iter(&self.world) {
                     if cell.x() == self.mouse.x && cell.y() == self.mouse.y {
                         can_move = false;
                     }
@@ -389,7 +389,7 @@ impl State {
         }
 
         if can_move {
-            for (mut cell, mut unit) in query.iter(&mut self.world) {
+            for (cell, unit) in query.iter_mut(&mut self.world) {
                 if cell.selected() {
                     cell.move_pos(self.mouse.x, self.mouse.y);
                     unit.use_move();
@@ -403,11 +403,12 @@ impl State {
     }
 
     fn attack_units(&mut self) {
-        let read_query = <(Read<GameCell>, Read<Unit>)>::query();
-        let query = <(Read<GameCell>, Write<Unit>)>::query();
+        let mut read_query = <(Read<GameCell>, Read<Unit>)>::query();
+        let mut nested_read_query = <(Read<GameCell>, Read<Unit>)>::query();
+        let mut query = <(Read<GameCell>, Write<Unit>)>::query();
 
         let mut damage = 0;
-        for (cell, unit) in read_query.iter_immutable(&self.world) {
+        for (cell, unit) in read_query.iter(&self.world) {
             if cell.selected()
                 && Rect::with_exact(
                     cell.x() - unit.attack_range(),
@@ -417,7 +418,7 @@ impl State {
                 )
                 .point_in_rect(Point::new(self.mouse.x, self.mouse.y))
             {
-                for (cell2, unit2) in read_query.iter_immutable(&self.world) {
+                for (cell2, unit2) in nested_read_query.iter(&self.world) {
                     if unit.race() != unit2.race()
                         && cell2.x() == self.mouse.x
                         && cell2.y() == self.mouse.y
@@ -429,7 +430,7 @@ impl State {
         }
 
         if damage > 0 {
-            for (cell, mut unit) in query.iter(&mut self.world) {
+            for (cell, unit) in query.iter_mut(&mut self.world) {
                 if cell.selected() {
                     unit.use_attack();
                 } else if cell.x() == self.mouse.x && cell.y() == self.mouse.y {
@@ -440,30 +441,32 @@ impl State {
     }
 
     fn make_units(&mut self) {
-        let query = <(Read<GameCell>, Write<Unit>)>::query().filter(changed::<Unit>());
+        let mut query = <(Read<GameCell>, Write<Unit>)>::query().filter(maybe_changed::<Unit>());
 
         let mut units = Vec::new();
-        for (cell, mut unit) in query.iter(&mut self.world) {
+        for (cell, unit) in query.iter_mut(&mut self.world) {
             if cell.selected() && self.turn == unit.race() {
                 if let Some(interceptor) = unit.make_interceptor(self.mouse.x, self.mouse.y) {
                     units.push(interceptor);
                 }
             }
         }
-        self.world.insert((), units.into_iter());
+        self.world.extend(units.into_iter());
     }
 
     fn clear_cells(&mut self) {
-        let query = <(Read<Unit>,)>::query().filter(changed::<Unit>());
+        let mut query = <(Read<Unit>,)>::query().filter(maybe_changed::<Unit>());
 
         let mut deleted = Vec::new();
-        for (e, (unit,)) in query.iter_entities_immutable(&self.world) {
-            if unit.hp() <= 0 {
-                deleted.push(e);
+        for chunk in query.iter_chunks_mut(&mut self.world) {
+            for (e, (unit,)) in chunk.into_iter_entities() {
+                if unit.hp() <= 0 {
+                    deleted.push(e);
+                }
             }
         }
         for e in deleted {
-            self.world.delete(e);
+            self.world.remove(e);
         }
     }
 
@@ -472,9 +475,9 @@ impl State {
             Race::Bug => Race::Human,
             Race::Human => Race::Bionic,
             Race::Bionic => {
-                let query = <(Write<Unit>,)>::query();
+                let mut query = <(Write<Unit>,)>::query();
 
-                for (mut unit,) in query.iter(&mut self.world) {
+                for (unit,) in query.iter_mut(&mut self.world) {
                     unit.recharge();
                 }
                 Race::Bug
